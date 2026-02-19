@@ -6,7 +6,15 @@ import { AnnouncementBanner } from '@/components/AnnouncementBanner';
 import { EventCard, type EventData } from '@/components/EventCard';
 import { CreateEventModal } from '@/components/CreateEventModal';
 import { FeedbackModal } from '@/components/FeedbackModal';
-import { eventApi, reactionApi, feedbackApi, announcementApi, type Event, type Reactions } from '@/lib/api';
+
+// Local storage keys
+const STORAGE_KEYS = {
+  EVENTS: 'eventpulse_events',
+  ANNOUNCEMENT: 'eventpulse_announcement',
+  VERSION: 'eventpulse_version',
+};
+
+const CURRENT_VERSION = '2.0'; // Updated version for new KMIT events
 
 export default function Home() {
   const [announcement, setAnnouncement] = useState(
@@ -14,147 +22,128 @@ export default function Home() {
   );
 
   const [events, setEvents] = useState<EventData[]>([]);
-  const [eventReactions, setEventReactions] = useState<Map<string, Reactions>>(new Map());
-  const [eventFeedbackCounts, setEventFeedbackCounts] = useState<Map<string, number>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [selectedEventForFeedback, setSelectedEventForFeedback] = useState<EventData | null>(null);
 
-  // Fetch events and announcement on mount
+  // Load events from localStorage on mount
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsLoading(true);
-        
-        // Fetch events
-        const eventsData = await eventApi.list();
-        
-        // Fetch reactions for each event
-        const reactionsPromises = eventsData.map(e => reactionApi.get(e.id));
-        const reactionsData = await Promise.all(reactionsPromises);
-        
-        // Fetch feedback counts for each event
-        const feedbackPromises = eventsData.map(e => feedbackApi.listByEvent(e.id));
-        const feedbackData = await Promise.all(feedbackPromises);
-        
-        // Convert to EventData format
-        const eventDataList: EventData[] = eventsData.map((event, index) => {
-          const reactions = reactionsData[index];
-          const totalReactions = Object.values(reactions.reactions).reduce((sum, count) => sum + count, 0);
-          const feedbackCount = feedbackData[index].length;
-          
-          return {
-            id: event.id.toString(),
-            title: event.title,
-            description: event.description,
-            date: new Date(event.date).toLocaleDateString('en-US', { 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            }),
-            time: new Date(event.date).toLocaleTimeString('en-US', { 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            }),
-            reactions: totalReactions,
-            feedback: feedbackCount,
-          };
-        });
-        
-        setEvents(eventDataList);
-        
-        // Store reactions for each event
-        const reactionsMap = new Map<string, Reactions>();
-        reactionsData.forEach((r) => {
-          reactionsMap.set(r.event_id.toString(), r);
-        });
-        setEventReactions(reactionsMap);
-        
-        // Store feedback counts
-        const feedbackMap = new Map<string, number>();
-        feedbackData.forEach((feedbacks, index) => {
-          feedbackMap.set(eventsData[index].id.toString(), feedbacks.length);
-        });
-        setEventFeedbackCounts(feedbackMap);
-        
-        // Fetch announcement
-        const announcementData = await announcementApi.get();
-        if (announcementData.message) {
-          setAnnouncement(announcementData.message);
+    setIsLoading(true);
+    
+    // Sample events to use
+    const sampleEvents: EventData[] = [
+      {
+        id: '1',
+        title: 'KMIT Evening — Saanjh',
+        description: 'An evening of culture, expression, and community that brings the campus together beyond academics. Saanjh celebrates music, performances, and shared moments — creating an atmosphere where creativity, energy, and connection take center stage.',
+        date: 'March 15, 2026',
+        time: '05:00 PM',
+        reactions: 42,
+        feedback: 12,
+      },
+      {
+        id: '2',
+        title: 'Patang Utsav',
+        description: 'A vibrant celebration of tradition and joy, Patang Utsav transforms the skies into a canvas of colors. Blending festivity, competition, and collective excitement, the event captures the spirit of freedom, playfulness, and cultural nostalgia.',
+        date: 'March 22, 2026',
+        time: '10:00 AM',
+        reactions: 87,
+        feedback: 23,
+      },
+      {
+        id: '3',
+        title: 'V-MUN',
+        description: 'A dynamic Model United Nations experience designed to foster diplomacy, critical thinking, and impactful debate. V-MUN empowers delegates to engage with global issues, sharpen negotiation skills, and experience the intensity of real-world policymaking.',
+        date: 'April 5, 2026',
+        time: '09:00 AM',
+        reactions: 56,
+        feedback: 18,
+      },
+    ];
+    
+    // Check version
+    const storedVersion = localStorage.getItem(STORAGE_KEYS.VERSION);
+    const needsUpdate = storedVersion !== CURRENT_VERSION;
+    
+    if (needsUpdate) {
+      // Force update to new events
+      setEvents(sampleEvents);
+      localStorage.setItem(STORAGE_KEYS.VERSION, CURRENT_VERSION);
+    } else {
+      // Load events from localStorage
+      const storedEvents = localStorage.getItem(STORAGE_KEYS.EVENTS);
+      if (storedEvents) {
+        try {
+          const parsedEvents = JSON.parse(storedEvents);
+          setEvents(parsedEvents);
+        } catch (error) {
+          console.error('Failed to parse stored events:', error);
+          setEvents(sampleEvents);
         }
-      } catch (error) {
-        console.error('Failed to fetch data:', error);
-      } finally {
-        setIsLoading(false);
+      } else {
+        // Add sample events if no events exist
+        setEvents(sampleEvents);
       }
+    }
+    
+    // Load announcement from localStorage
+    const storedAnnouncement = localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENT);
+    if (storedAnnouncement) {
+      setAnnouncement(storedAnnouncement);
+    }
+    
+    setIsLoading(false);
+  }, []);
+
+  // Save events to localStorage whenever they change
+  useEffect(() => {
+    if (!isLoading) {
+      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+    }
+  }, [events, isLoading]);
+
+  const handleCreateEvent = useCallback((newEvent: Omit<EventData, 'id' | 'reactions' | 'feedback'>) => {
+    // Generate a unique ID
+    const id = Date.now().toString();
+    
+    // Parse the date to format it nicely
+    const eventDate = new Date(newEvent.date);
+    const formattedDate = eventDate.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    const formattedTime = eventDate.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+    
+    // Create the event
+    const event: EventData = {
+      id,
+      title: newEvent.title,
+      description: newEvent.description,
+      date: formattedDate,
+      time: formattedTime,
+      reactions: 0,
+      feedback: 0,
     };
     
-    fetchData();
+    // Add to the beginning of the events array
+    setEvents((prev) => [event, ...prev]);
   }, []);
 
-  const handleCreateEvent = useCallback(async (newEvent: Omit<EventData, 'id' | 'reactions' | 'feedback'>) => {
-    try {
-      // Create the event in the backend
-      const createdEvent = await eventApi.create({
-        title: newEvent.title,
-        description: newEvent.description,
-        date: new Date(newEvent.date).toISOString(),
-      });
-      
-      // Fetch reactions for the new event
-      const reactions = await reactionApi.get(createdEvent.id);
-      
-      // Convert to EventData format
-      const event: EventData = {
-        id: createdEvent.id.toString(),
-        title: createdEvent.title,
-        description: createdEvent.description,
-        date: new Date(createdEvent.date).toLocaleDateString('en-US', { 
-          year: 'numeric', 
-          month: 'long', 
-          day: 'numeric' 
-        }),
-        time: new Date(createdEvent.date).toLocaleTimeString('en-US', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        }),
-        reactions: 0,
-        feedback: 0,
-      };
-      
-      setEvents((prev) => [event, ...prev]);
-      setEventReactions((prev) => new Map(prev).set(event.id, reactions));
-      setEventFeedbackCounts((prev) => new Map(prev).set(event.id, 0));
-    } catch (error) {
-      console.error('Failed to create event:', error);
-      alert('Failed to create event. Please try again.');
-    }
-  }, []);
-
-  const handleReactToEvent = useCallback(async (eventId: string) => {
-    try {
-      // Add a heart reaction (you can make this dynamic later)
-      const reactions = await reactionApi.add(parseInt(eventId), '❤️');
-      
-      // Update local state
-      setEventReactions((prev) => new Map(prev).set(eventId, reactions));
-      
-      // Update event reactions count
-      setEvents((prev) =>
-        prev.map((event) =>
-          event.id === eventId
-            ? { 
-                ...event, 
-                reactions: Object.values(reactions.reactions).reduce((sum, count) => sum + count, 0)
-              }
-            : event
-        )
-      );
-    } catch (error) {
-      console.error('Failed to add reaction:', error);
-    }
+  const handleReactToEvent = useCallback((eventId: string) => {
+    // Update event reactions count
+    setEvents((prev) =>
+      prev.map((event) =>
+        event.id === eventId
+          ? { ...event, reactions: event.reactions + 1 }
+          : event
+      )
+    );
   }, []);
 
   const handleOpenFeedback = useCallback((eventId: string) => {
@@ -165,33 +154,16 @@ export default function Home() {
     }
   }, [events]);
 
-  const handleSubmitFeedback = useCallback(async (feedbackText: string) => {
+  const handleSubmitFeedback = useCallback((feedbackText: string) => {
     if (selectedEventForFeedback) {
-      try {
-        await feedbackApi.submit({
-          event_id: parseInt(selectedEventForFeedback.id),
-          message: feedbackText,
-        });
-        
-        // Update local state
-        setEvents((prev) =>
-          prev.map((event) =>
-            event.id === selectedEventForFeedback.id
-              ? { ...event, feedback: event.feedback + 1 }
-              : event
-          )
-        );
-        
-        setEventFeedbackCounts((prev) => {
-          const newMap = new Map(prev);
-          const currentCount = newMap.get(selectedEventForFeedback.id) || 0;
-          newMap.set(selectedEventForFeedback.id, currentCount + 1);
-          return newMap;
-        });
-      } catch (error) {
-        console.error('Failed to submit feedback:', error);
-        alert('Failed to submit feedback. Please try again.');
-      }
+      // Update local state
+      setEvents((prev) =>
+        prev.map((event) =>
+          event.id === selectedEventForFeedback.id
+            ? { ...event, feedback: event.feedback + 1 }
+            : event
+        )
+      );
     }
   }, [selectedEventForFeedback]);
 
