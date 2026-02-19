@@ -141,4 +141,17 @@
   .btn-secondary {
     @apply relative inline-flex items-center justify-center px-4 py-2 rounded-lg bg-secondary text-secondary-foreground font-medium transition-all duration-300 ease-in-out hover:bg-secondary/80;
   }
+
+  .animate-scroll-banner {
+    animation: scroll-right 25s linear infinite;
+  }
+}
+
+@keyframes scroll-right {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0%);
+  }
 }

@@ -21,7 +21,15 @@ export function CreateEventModal({ isOpen, onClose, onSubmit }: CreateEventModal
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.title && formData.description && formData.date && formData.time) {
-      onSubmit(formData);
+      // Combine date and time into a single ISO string
+      const dateTimeString = `${formData.date}T${formData.time}:00`;
+      
+      onSubmit({
+        title: formData.title,
+        description: formData.description,
+        date: dateTimeString,
+        time: formData.time,
+      });
       setFormData({ title: '', description: '', date: '', time: '' });
       onClose();
     }
